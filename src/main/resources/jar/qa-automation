@@ -1,0 +1,3 @@
+#!/bin/bash
+
+java -jar /test/qa-newsserver/src/main/resources/jar/qa-automation-0.0.12-SNAPSHOT-jar-with-dependencies.jar $@ 

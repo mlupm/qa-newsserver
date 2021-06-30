@@ -1,0 +1,291 @@
+{
+	"id": "root",
+	"env": {
+		"APP_URL": "http://localhost:8081/news",
+		"GOOGLE_APPLICATION_CREDENTIALS": "/creds.json"
+	},
+	"run": [
+		"SHELL(mkdir /logs; mkdir /logs/output; mkdir /logs/tests_results)",
+		"SHELL(gcloud auth activate-service-account --key-file=$GOOGLE_APPLICATION_CREDENTIALS)"
+	],
+	"test": [
+		"SCENARIO(test-cases)"
+	],
+	"destroy": [
+	],
+	"leafs": {
+		"test-cases": [
+			{
+				"id": "add1",
+				"env": {
+					"OUTPUT_FILE": "/logs/output/add1_output.txt",
+					"RESULTS_FILE": "/logs/tests_results/add1_results.txt",
+					"QUERY_CHECK": "SELECT IF (EXISTS (SELECT * FROM articulo WHERE titulo='ejemplo' && autor='autor' && cabecera IS NULL && categoria IS NULL && cuerpo IS NULL && premium='0'), 'ADD1: TEST PASSED', 'ADD1: ERROR NEW NOT ADDED')"
+				},
+				"run": [
+					"SHELL(touch $OUTPUT_FILE;curl -d '{\"title\":\"ejemplo\", \"author\":\"autor\"}' -H \"Content-Type: application/json\" -X POST $APP_URL > $OUTPUT_FILE)"
+				],
+				"test": [
+					"SHELL(docker exec mysql mysql -u dbuser -ppassword -N -e \"USE news_db; $QUERY_CHECK;\" > $RESULTS_FILE)"
+				],
+				"destroy": [
+				]
+			},
+			{
+				"id": "add2",
+				"env": {
+					"OUTPUT_FILE": "/logs/output/add2_output.txt",
+					"RESULTS_FILE": "/logs/tests_results/add2_results.txt",
+					"QUERY_CHECK": "SELECT IF (EXISTS (SELECT * FROM articulo WHERE titulo='ejemplo2' && autor='autor' && cabecera='cabecera de ejemplo' && categoria='ejemplo' && cuerpo='Cuerpo de noticia de ejemplo' && premium='0'), 'ADD2: TEST PASSED', 'ADD2: ERROR NEW NOT ADDED')"
+				},
+				"run": [
+					"SHELL(sleep 5; touch $OUTPUT_FILE; curl -d '{\"title\":\"ejemplo2\", \"header\":\"cabecera de ejemplo\", \"author\":\"autor\", \"body\":\"Cuerpo de noticia de ejemplo\", \"category\": \"ejemplo\", \"premium\":\"false\"}' -H \"Content-Type: application/json\" -X POST $APP_URL > $OUTPUT_FILE)"
+				],
+				"test": [
+					"SHELL(docker exec mysql mysql -u dbuser -ppassword -N -e \"USE news_db; $QUERY_CHECK;\" > $RESULTS_FILE)"
+				],
+				"destroy": [
+				]
+			},
+			{
+				"id": "add3",
+				"env": {
+					"OUTPUT_FILE": "/logs/output/add3_output.txt",
+					"RESULTS_FILE": "/logs/tests_results/add3_results.txt",
+					"QUERY_CHECK": "SELECT IF (EXISTS (SELECT * FROM articulo WHERE titulo='ejemplo3'), 'ADD3: ERROR NEW REGISTERED WHEN IT SHOULD NOT', 'ADD3: TEST PASSED')"
+				},
+				"run": [
+					"SHELL(sleep 10; touch $OUTPUT_FILE; curl -d '{\"title\":\"ejemplo3\"}' -H \"Content-Type: application/json\" -X POST $APP_URL > $OUTPUT_FILE)"
+				],
+				"test": [
+					"SHELL(docker exec mysql mysql -u dbuser -ppassword -N -e \"USE news_db; $QUERY_CHECK;\" > $RESULTS_FILE)"
+				],
+				"destroy": [
+				]
+			},
+			{
+				"id": "add4",
+				"env": {
+					"OUTPUT_FILE": "/logs/output/add4_output.txt",
+					"RESULTS_FILE": "/logs/tests_results/add4_results.txt",
+					"QUERY_CHECK": "SELECT IF ((SELECT COUNT(titulo) FROM articulo WHERE titulo='ejemplo4') > 1, 'ADD4: ERROR MORE THAN ONE ROW WITH SAME KEY', 'ADD4: TEST PASSED');"
+				},
+				"run": [
+					"SHELL(sleep 15; touch $OUTPUT_FILE; curl -d '{\"title\":\"ejemplo4\", \"author\":\"autor\"}' -H \"Content-Type: application/json\" -X POST $APP_URL > /dev/null; curl -d '{\"title\":\"ejemplo4\", \"author\":\"autor\"}' -H \"Content-Type: application/json\" -X POST $APP_URL > $OUTPUT_FILE)"
+				],
+				"test": [
+					"SHELL(docker exec mysql mysql -u dbuser -ppassword -N -e \"USE news_db; $QUERY_CHECK;\" > $RESULTS_FILE)"
+				],
+				"destroy": [
+				]
+			},
+			{
+				"id": "lee1",
+				"env": {
+					"OUTPUT_FILE": "/logs/output/lee1_output.txt",
+					"PATH_PARAM": "ejemplo_lectura",
+					"RESULTS_FILE": "/logs/tests_results/lee1_results.txt",
+					"EXPECTED_RESULT": "{\"title\":\"ejemplo_lectura\",\"header\":null,\"author\":\"autor\",\"category\":null,\"body\":null,\"premium\":false}"
+				},
+				"run": [
+					"SHELL(sleep 20; touch $OUTPUT_FILE; curl -d '{\"title\":\"ejemplo_lectura\", \"author\":\"autor\"}' -H \"Content-Type: application/json\" -X POST $APP_URL > /dev/null; curl -H \"Content-Type: application/json\" -X GET $APP_URL/$PATH_PARAM > $OUTPUT_FILE)"
+				],
+				"test": [
+					"SHELL((if [ $EXPECTED_RESULT = $(cat $OUTPUT_FILE) ]; then echo \"LEE1: TEST PASSED\"; else echo \"LEE1: ERROR NEW IS NOT AS EXPECTED\"; fi) > $RESULTS_FILE)"
+				],
+				"destroy": [
+				]
+			},
+			{
+				"id": "lee2",
+				"env": {
+					"OUTPUT_FILE": "/logs/output/lee2_output.txt",
+					"PATH_PARAM": "ejemplo_lectura_no_existe",
+					"RESULTS_FILE": "/logs/tests_results/lee2_results.txt"
+				},
+				"run": [
+					"SHELL(sleep 25; touch $OUTPUT_FILE; curl -H \"Content-Type: application/json\" -X GET $APP_URL/$PATH_PARAM > $OUTPUT_FILE)"
+				],
+				"test": [
+					"SHELL((grep 'Status 404' -q $OUTPUT_FILE; if [ $? -eq 0 ]; then echo 'LEE2: TEST PASSED'; else echo 'LEE2: ERROR RETURN CODE NOT AS EXPECTED'; fi) > $RESULTS_FILE)"
+				],
+				"destroy": [
+				]
+			},
+			{
+				"id": "reg1",
+				"env": {
+					"OUTPUT_FILE": "/logs/output/reg1_output.txt",
+					"RESULTS_FILE": "/logs/tests_results/reg1_results.txt",
+					"QUERY_CHECK": "SELECT IF (EXISTS (SELECT * FROM usuario WHERE nombre='nombre1' && password=1234), 'REG1: TEST PASSED', 'REG1: ERROR USER NOT IN DATABASE')"
+				},
+				"run": [
+					"SHELL(sleep 30; touch $OUTPUT_FILE; curl -d '{\"username\":\"nombre1\", \"password\":\"1234\"}' -H \"Content-Type: application/json\" -X POST $APP_URL/users > $OUTPUT_FILE)"
+				],
+				"test": [
+					"SHELL(docker exec mysql mysql -u dbuser -ppassword -N -e \"USE news_db; $QUERY_CHECK;\" > $RESULTS_FILE)"
+				],
+				"destroy": [
+				]
+			},
+			{
+				"id": "reg2",
+				"env": {
+					"OUTPUT_FILE": "/logs/output/reg2_output.txt",
+					"RESULTS_FILE": "/logs/tests_results/reg2_results.txt"
+				},
+				"run": [
+					"SHELL(sleep 35; touch $OUTPUT_FILE; curl -d '{\"username\":\"registrado\", \"password\":\"1234\"}' -H \"Content-Type: application/json\" -X POST $APP_URL/users > /dev/null; curl -d '{\"username\":\"registrado\", \"password\":\"1234\"}' -H \"Content-Type: application/json\" -X POST $APP_URL/users > $OUTPUT_FILE)"
+				],
+				"test": [
+					"SHELL((grep 'Status 400' -q $OUTPUT_FILE; if [ $? -eq 0 ]; then echo 'REG2: TEST PASSED'; else echo 'REG2: ERROR RETURN CODE NOT AS EXPECTED'; fi) > $RESULTS_FILE)"
+				],
+				"destroy": [
+				]
+			},
+			{
+				"id": "log1",
+				"env": {
+					"OUTPUT_FILE": "/logs/output/log1_output.txt",
+					"RESULTS_FILE": "/logs/tests_results/log1_results.txt"
+				},
+				"run": [
+					"SHELL(sleep 40; touch $OUTPUT_FILE; curl -d '{\"username\":\"ejemplo-login\", \"password\":\"1234\"}' -H \"Content-Type: application/json\" -X POST $APP_URL/users > /dev/null; curl -d '{\"username\":\"ejemplo-login\", \"password\":\"1234\"}' -H \"Content-Type: application/json\" -X POST $APP_URL/users/login > $OUTPUT_FILE)"
+				],
+				"test": [
+					"SHELL((grep 'SUCCESS' -q $OUTPUT_FILE; if [ $? -eq 0 ]; then echo 'LOG1: TEST PASSED'; else echo 'LOG1: ERROR USER NOT LOGGED'; fi) > $RESULTS_FILE)"
+				],
+				"destroy": [
+				]
+			},
+			{
+				"id": "log2",
+				"env": {
+					"OUTPUT_FILE": "/logs/output/log2_output.txt",
+					"RESULTS_FILE": "/logs/tests_results/log2_results.txt"
+				},
+				"run": [
+					"SHELL(sleep 45; touch $OUTPUT_FILE; curl -d '{\"username\":\"error-login\", \"password\":\"1234\"}' -H \"Content-Type: application/json\" -X POST $APP_URL/users/login > $OUTPUT_FILE)"
+				],
+				"test": [
+					"SHELL((grep 'Status 404' -q $OUTPUT_FILE; if [ $? -eq 0 ]; then echo 'LOG2: TEST PASSED'; else echo 'LOG2: ERROR USER NOT LOGGED'; fi) > $RESULTS_FILE)"
+				],
+				"destroy": [
+				]
+			},
+			{
+				"id": "addex1",
+				"env": {
+					"OUTPUT_FILE": "/logs/output/addex1_output.txt",
+					"RESULTS_FILE": "/logs/tests_results/addex1_results.txt",
+					"QUERY_CHECK": "SELECT IF (EXISTS (SELECT * FROM articulo WHERE titulo='ejemplo-addex1' && autor='ejemplo-addex' && cabecera IS NULL && categoria IS NULL && cuerpo IS NULL && premium='1'), 'ADDEX1: TEST PASSED', 'ADDEX1: ERROR NEW NOT ADDED')"
+				},
+				"run": [
+					"SHELL(sleep 50; touch $OUTPUT_FILE; curl -d '{\"username\":\"ejemplo-addex\", \"password\":\"1234\"}' -H \"Content-Type: application/json\" -X POST $APP_URL/users > /dev/null; curl -d '{\"username\":\"ejemplo-addex\", \"password\":\"1234\"}' -H \"Content-Type: application/json\" -X POST $APP_URL/users/login > /dev/null; curl -d '{\"title\":\"ejemplo-addex1\", \"author\":\"ejemplo-addex\", \"premium\":\"true\"}' -H \"Content-Type: application/json\" -X POST $APP_URL > $OUTPUT_FILE)"
+				],
+				"test": [
+					"SHELL(docker exec mysql mysql -u dbuser -ppassword -N -e \"USE news_db; $QUERY_CHECK;\" > $RESULTS_FILE)"
+				],
+				"destroy": [
+				]
+			},
+			{
+				"id": "addex2",
+				"env": {
+					"OUTPUT_FILE": "/logs/output/addex2_output.txt",
+					"RESULTS_FILE": "/logs/tests_results/addex2_results.txt",
+					"QUERY_CHECK": "SELECT IF (EXISTS (SELECT * FROM articulo WHERE titulo='ejemplo-addex2' && autor='nologged-addex' && cabecera IS NULL && categoria IS NULL && cuerpo IS NULL && premium='1'), 'ADDEX2: ERROR NEW ADDED WHEN  IT SHOULD NOT', 'ADDEX2: TEST PASSED')"
+				},
+				"run": [
+					"SHELL(sleep 55; touch $OUTPUT_FILE; curl -d '{\"title\":\"ejemplo-addex2\", \"author\":\"nologged-addex\", \"premium\":\"true\"}' -H \"Content-Type: application/json\" -X POST $APP_URL > $OUTPUT_FILE)"
+				],
+				"test": [
+					"SHELL(docker exec mysql mysql -u dbuser -ppassword -N -e \"USE news_db; $QUERY_CHECK;\" > $RESULTS_FILE)"
+				],
+				"destroy": [
+				]
+			},
+			{
+				"id": "addex3",
+				"env": {
+					"OUTPUT_FILE": "/logs/output/addex3_output.txt",
+					"RESULTS_FILE": "/logs/tests_results/addex3_results.txt",
+					"QUERY_CHECK": "SELECT IF ((SELECT COUNT(titulo) FROM articulo WHERE titulo='ejemplo-addex3') > 1, 'ADDEX3: ERROR MORE THAN ONE ROW WITH SAME KEY', 'ADDEX3: TEST PASSED');"
+				},
+				"run": [
+					"SHELL(sleep 60; touch $OUTPUT_FILE; curl -d '{\"username\":\"logged-3\", \"password\":\"1234\"}' -H \"Content-Type: application/json\" -X POST $APP_URL/users > /dev/null; curl -d '{\"username\":\"logged-3\", \"password\":\"1234\"}' -H \"Content-Type: application/json\" -X POST $APP_URL/users/login > /dev/null; curl -d '{\"title\":\"ejemplo-addex3\", \"author\":\"logged-3\", \"premium\":\"true\"}' -H \"Content-Type: application/json\" -X POST $APP_URL > /dev/null; curl -d '{\"title\":\"ejemplo-addex3\", \"author\":\"logged-3\", \"premium\":\"true\"}' -H \"Content-Type: application/json\" -X POST $APP_URL > $OUTPUT_FILE)"
+				],
+				"test": [
+					"SHELL(docker exec mysql mysql -u dbuser -ppassword -N -e \"USE news_db; $QUERY_CHECK;\" > $RESULTS_FILE)"
+				],
+				"destroy": [
+				]
+			},
+			{
+				"id": "leeex1",
+				"env": {
+					"OUTPUT_FILE": "/logs/output/leeex1_output.txt",
+					"RESULTS_FILE": "/logs/tests_results/leeex1_results.txt",
+					"PATH_PARAM": "ejemplo-leeex1",
+					"EXPECTED_RESULT": "{\"title\":\"ejemplo-leeex1\",\"header\":null,\"author\":\"logged-lex1\",\"category\":null,\"body\":null,\"premium\":true}"
+				},
+				"run": [
+					"SHELL(sleep 65; touch $OUTPUT_FILE; curl -d '{\"username\":\"logged-lex1\", \"password\":\"1234\"}' -H \"Content-Type: application/json\" -X POST $APP_URL/users > /dev/null; curl -d '{\"username\":\"logged-lex1\", \"password\":\"1234\"}' -H \"Content-Type: application/json\" -X POST $APP_URL/users/login > /dev/null; curl -d '{\"title\":\"ejemplo-leeex1\", \"author\":\"logged-lex1\", \"premium\":\"true\"}' -H \"Content-Type: application/json\" -X POST $APP_URL > /dev/null; curl -H \"Content-Type: application/json\" -X GET $APP_URL/$PATH_PARAM > $OUTPUT_FILE)"
+				],
+				"test": [
+					"SHELL((if [ $EXPECTED_RESULT = $(cat $OUTPUT_FILE) ]; then echo \"LEEEX1: TEST PASSED\"; else echo \"LEEEX1: ERROR NEW IS NOT AS EXPECTED\"; fi) > $RESULTS_FILE)"
+				],
+				"destroy": [
+				]
+			},
+			{
+				"id": "leeex2",
+				"env": {
+					"OUTPUT_FILE": "/logs/output/leeex2_output.txt",
+					"RESULTS_FILE": "/logs/tests_results/leeex2_results.txt",
+					"PATH_PARAM": "no_exists_new"
+				},
+				"run": [
+					"SHELL(sleep 70; touch $OUTPUT_FILE; curl -d '{\"username\":\"logged-lex2\", \"password\":\"1234\"}' -H \"Content-Type: application/json\" -X POST $APP_URL/users > /dev/null; curl -d '{\"username\":\"logged-lex2\", \"password\":\"1234\"}' -H \"Content-Type: application/json\" -X POST $APP_URL/users/login > /dev/null; curl -H \"Content-Type: application/json\" -X GET $APP_URL/$PATH_PARAM > $OUTPUT_FILE)"
+				],
+				"test": [
+					"SHELL((grep 'Status 404' -q $OUTPUT_FILE; if [ $? -eq 0 ]; then echo 'LEEEX2: TEST PASSED'; else echo 'LEEEX2: ERROR RETURN CODE NOT AS EXPECTED'; fi) > $RESULTS_FILE)"
+				],
+				"destroy": [
+				]
+			},
+			{
+				"id": "logout1",
+				"env": {
+					"OUTPUT_FILE": "/logs/output/logout1_output.txt",
+					"RESULTS_FILE": "/logs/tests_results/logout1_results.txt",
+					"PATH_PARAM": "logout1"
+				},
+				"run": [
+					"SHELL(sleep 75; touch $OUTPUT_FILE ; curl -d '{\"username\":\"logout1\", \"password\":\"1234\"}' -H \"Content-Type: application/json\" -X POST $APP_URL/users > /dev/null; curl -d '{\"username\":\"logout1\", \"password\":\"1234\"}' -H \"Content-Type: application/json\" -X POST $APP_URL/users/login > /dev/null; curl -H \"Content-Type: application/json\" -X DELETE $APP_URL/users/logout/$PATH_PARAM > $OUTPUT_FILE)"
+				],
+				"test": [
+					"SHELL((grep 'SUCCESS' -q $OUTPUT_FILE; if [ $? -eq 0 ]; then echo 'LOGOUT1: TEST PASSED'; else echo 'LOGOUT1: ERROR USER NOT LOGOUT CORRECTLY'; fi) > $RESULTS_FILE)"
+				],
+				"destroy": [
+				]
+			},
+			{
+				"id": "logout2",
+				"env": {
+					"OUTPUT_FILE": "/logs/output/logout2_output.txt",
+					"RESULTS_FILE": "/logs/tests_results/logout2_results.txt",
+					"PATH_PARAM": "logout2"
+				},
+				"run": [
+					"SHELL(sleep 80; touch $OUTPUT_FILE ; curl -H \"Content-Type: application/json\" -X DELETE $APP_URL/users/logout/$PATH_PARAM > $OUTPUT_FILE)"
+				],
+				"test": [
+					"SHELL((grep 'Status 404' -q $OUTPUT_FILE; if [ $? -eq 0 ]; then echo 'LOGOUT2: TEST PASSED'; else echo 'LOGOUT2: ERROR USER NOT LOGOUT CORRECTLY'; fi) > $RESULTS_FILE)"
+				],
+				"destroy": [
+				]
+			}
+		]
+	}
+}

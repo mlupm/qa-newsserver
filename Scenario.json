@@ -1,0 +1,51 @@
+{
+	"id":"root",
+	"env": {},
+	"modes": {
+		"no_instances_create":["boot-instances:run"],
+		"no_instances_destroy":["boot-instances:destroy"],
+		"no_setup":["setup-instances_and_launch_tests:run"],
+		"no_boot":["setup-instances_and_launch_tests:test"]
+	},
+	"run": ["SHELL(gcloud auth activate-service-account --key-file=$GOOGLE_APPLICATION_CREDENTIALS)"],
+	"test": ["SCENARIO(boot-instances)"],
+	"destroy": [],
+	"leafs": {
+		"boot-instances": 
+		[
+			{
+				"id":"mysql",
+				"env": 
+				{
+					"INSTANCE_NAME" : "qa-launcher-mysql",
+					"INSTANCE_REGION": "europe-west1",
+					"INSTANCE_ZONE" : "europe-west1-b",
+					"INSTANCE_IMAGE": "ubuntu-minimal-1804-bionic-v20210623",
+					"SETUP_SCRIPT"   : "qa-newsserver/src/main/resources/scripts/setup-mysql.sh" 
+				},
+				"run": ["SHELL(gcloud compute instances create $INSTANCE_NAME --zone=$INSTANCE_ZONE --machine-type=e2-medium --subnet=default --network-tier=PREMIUM --maintenance-policy=MIGRATE --image=$INSTANCE_IMAGE --image-project=ubuntu-os-cloud --boot-disk-size=10GB --boot-disk-type=pd-balanced --boot-disk-device-name=$INSTANCE_NAME; sleep 120)"],
+				"test": ["SCENARIO(setup-instances_and_launch_tests)"],
+				"destroy": ["SHELL(gcloud compute instances stop $INSTANCE_NAME --zone=$INSTANCE_ZONE; gcloud compute instances delete $INSTANCE_NAME --zone=$INSTANCE_ZONE)"]
+			}
+		],
+		
+		"setup-instances_and_launch_tests":
+		[
+			{
+				"id": "setup",
+				"env":
+				{
+					"BOOT_SCRIPT"   : "qa-newsserver/src/main/resources/scripts/boot.sh",
+					"QA_AUTOMATION" : "/test/qa-newsserver/src/main/resources/jar/qa-automation",
+					"TEST_SCENARIO_DIR" : "/test/qa-newsserver/src/test/resources"
+				},
+				"run": ["SHELL(gcloud compute ssh root@$INSTANCE_NAME --zone=$INSTANCE_ZONE --command='mkdir -p /test'; gcloud compute scp --zone=$INSTANCE_ZONE $GOOGLE_APPLICATION_CREDENTIALS root@$INSTANCE_NAME:/creds.json; gcloud compute scp --zone=$INSTANCE_ZONE --recurse $TEST_DIR root@$INSTANCE_NAME:/test; gcloud compute ssh root@$INSTANCE_NAME --zone=$INSTANCE_ZONE --command=\"/test/$SETUP_SCRIPT $JAR_TYPE $VERSION\")"],
+				"test": ["SHELL(gcloud compute ssh root@$INSTANCE_NAME --zone=$INSTANCE_ZONE --command=\"/test/$BOOT_SCRIPT $QA_AUTOMATION $TEST_SCENARIO_DIR\")"],
+				"destroy": [
+					"SHELL(gcloud compute ssh root@$INSTANCE_NAME --zone=$INSTANCE_ZONE --command=\"cat /logs/output/* > /logs/output/test_output.txt; gsutil cp /logs/output/test_output.txt gs://qa_results_tfg/$VERSION/$INSTANCE_NAME/output.txt\")",
+					"SHELL(gcloud compute ssh root@$INSTANCE_NAME --zone=$INSTANCE_ZONE --command=\"cat /logs/tests_results/* > /logs/tests_results/tests_results.txt; gsutil cp /logs/tests_results/tests_results.txt gs://qa_results_tfg/$VERSION/$INSTANCE_NAME/tests_results.txt; echo 'TEST PLAN FINISHED, CHECK GOOGLE CLOUD LOGS TO SEE RESULTS'\")"
+				]
+			}
+		] 
+	}
+}
